@@ -34,9 +34,33 @@ The reason behind this project is to create deep learning models to make people 
 3. In the mean time, after step 1 have to work on building the knowledgebase and the ability to crawl the web for information.
 4. Once we can produce the opposing views (while the user is typing their input) we can create a proof of concept for the app/tool.
 
-## How to test Char GPT 3.5
+## How to test Chat GPT 3.5
 
 1. One idea is to let it create articles that presents the opposite view of the article that was fed in.
 2. Test it on some political and theological idealogies as well.
+ for the app/tool.
+
+## How to test Chart GPT 3.5
+
+1. One idea is to let it create articles that presents the opposite view of the article that was fed in.
+2. Test it on some political and theological idealogies as well.
+ for the app/tool.
+
+## How to test Chat GPT 3.5
+
+1. One idea is to let it create articles that presents the opposite view of the article that was fed in.
+2. Test it on some political and theological idealogies as well.
+ for the app/tool.
+
+## How to test Chat GPT 3.5
+
+1. One idea is to let it create articles that presents the opposite view of the article that was fed in.
+2. Test it on some political and theological idealogies as well.
+3. Although while testing step 1 it might try to present some factual hypocrisies that we don't want to right now.
 
 
+# Challenges
+
+## Computing power
+
+- I do not think it's possible to run llama 3 on this machine, have to try kaggle and see
