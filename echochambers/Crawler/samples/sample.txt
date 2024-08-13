@@ -1,0 +1,140 @@
+My Twitter conversation with Harrison Chase, Founder of Langchain, about building a multi-agent framework using LangGraph (https://rb.gy/8xpdkd), led me to discover amazing world of LCEL. I became fascinated by the functionality it offers and how LCEL simplifies the development process using Langchain.
+Why Language Expression Language (LCEL)?
+
+LCEL streamlines the coding process by enabling the composition of complex chains using a simple syntax, similar to pipes in Linux. It facilitates the construction of intricate chains from basic components and offers built-in features such as streaming, parallelism, and logging. LCEL allows for replicating the same functionality as previously found in Langchain but with less code. Some of its key features include:
+
+    Unified Interface- LCEL provides a consistent interface for all chains
+    Customization and Composition Primitive- LCEL provides a number of primitives that make it easy to compose chains, parallelize components, add fallbacks, dynamically configure chain internal
+    Support of Async, Invoke and Stream together- LCEL gives you batch, streaming and async capabilities in single classs
+
+A few keys concepts to know
+Prompt Template, LLM and Chain Class in Langchain
+Practical Cases to Leverage LCEL
+
+Case -1: Run Two Chains Together Simultaneously
+
+Imagine you are developing an application that takes code generation requirements as input and uses LLM to generate code and test cases. Performing these actions in a single LLM may result in poor performance for complex requirements, whereas using two separate focused calls could be more time-consuming. LCEL provides RunnableParallel class to run these two chains together and allows makes easy to run them parallelly
+
+    RunnableParallel — Run calls parallelly
+    - useful for manipulating the output of one Runnable to match the input format of the next Runnable in a sequence.
+
+import os
+from langchain_openai import AzureChatOpenAI
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableParallel, RunnablePassthrough
+
+parser = StrOutputParser()
+code_requirement = "fibonacci series" #code requirement to generate fibonacci series
+
+#Seperate chains for generating code and test-cases
+code_gen_chain = ChatPromptTemplate.from_template("Generate optimized python code for {code_requirement}") | model | parser
+test_cases_chain = (
+    ChatPromptTemplate.from_template("Generate test-cases for the python code for {code_requirement}") | model | parser
+)
+
+#Using RunnableParallel to combing chains together
+map_chain = RunnableParallel(code_generation=code_gen_chain, testcase_generation=test_cases_chain)
+
+map_chain.invoke({"code_requirement": code_requirement})
+
+Case -2: Insert input dynamically in Runtime
+
+If your application requires obtaining user input during runtime, the RunnablePassthrough class enables you to do so.
+
+    RunnablePassthrough
+    - allows to pass inputs unchanged or with the addition of extra keys
+    - Typically used in conjunction with RunnableParallel to assign data to a new key in the map
+
+from langchain_core.runnables import RunnableParallel, RunnablePassthrough
+
+runnable = RunnableParallel(
+    passed=RunnablePassthrough(),
+    extra=RunnablePassthrough.assign(mult=lambda x: x["num"] * 3),
+    modified=lambda x: x["num"] + 1,
+)
+
+runnable.invoke({"num": 1})
+
+Case -3: Dynamic Routing based on User’s Query
+
+Sometimes, we need to route among task-focused prompts based on the user’s query. For instance, if the user requests a summary of specific content, it is better to route to a prompt specialized in generating detailed summaries. On the other hand, if the user asks to retrieve certain information from enterprise data, then an answer from a RAG-based chain is more appropriate.
+
+    RunnableLambda — Run Custom Functions
+    - Use arbitrary functions in the pipeline
+    - all inputs to these functions need to be a SINGLE argument
+    - If a function that access multiple argument, write a wrapper that accepts a single i/p and unpacks multiple arguments
+
+    RunnableBranch — Dynamic Routing Logic Based on Input
+    - Routing allows you to create non-deterministic chains where the output of a previous step defines the next step
+    - Two ways to perform routing
+    — Using RunnableBranch
+    — Writing custom factory function that takes the input of a previous step and returns a runnable. Importantly, this should return a runnable and NOT actually execute.
+
+from langchain_community.vectorstores import FAISS
+import os
+from langchain_openai import AzureChatOpenAI
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableParallel, RunnablePassthrough, RunnableLambda, RunnableBranch
+from langchain_openai.embeddings import AzureOpenAIEmbeddings
+
+def get_retriever():
+    docs = ["Sports play a crucial role in fostering physical fitness, teamwork, and camaraderie among individuals. Whether it's the adrenaline rush of a competitive match or the joy of personal achievement, sports offer a platform for individuals to push their limits and excel."
+        ,"Science, the relentless pursuit of knowledge through observation, experimentation, and reasoning, serves as humanity's beacon of understanding in the vast expanse of the unknown."]
+    embedding = AzureOpenAIEmbeddings(azure_deployment='text-embedding-ada-002',openai_api_version='2023-05-15')
+    db = FAISS.from_texts(docs, embedding)
+    return db.as_retriever()
+
+qa_template = """Answer the question based only on the following context:
+{context}
+
+Question: {question}
+"""
+retriever = get_retriever()
+qa_prompt = ChatPromptTemplate.from_template(qa_template)
+output_parser = StrOutputParser()
+qa_chain = RunnableLambda(lambda x:x['question']) | RunnableParallel({"context": retriever, "question": RunnablePassthrough()}) | qa_prompt | model | output_parser
+
+summary_template = """Write a deatiled and comprehensive summary within 4-5 lines of below text:
+{question}
+"""
+summary_prompt = ChatPromptTemplate.from_template(summary_template)
+summary_chain = summary_prompt | model | output_parser
+
+#Chain to decide routing condition
+classification_chain = (
+    ChatPromptTemplate.from_template(
+        """Given the user question below, classify it as either being about `Summarization`, `QA`.
+
+Do not respond with more than one word.
+
+<question>
+{question}
+</question>
+
+Classification:"""
+    )
+    | model
+    | output_parser
+)
+
+branch = RunnableBranch(
+    (lambda x: "summarization" in x["topic"].lower(), summary_chain),
+    qa_chain
+)
+
+full_chain = {"topic": classification_chain, "question": lambda x: x["question"]} | branch
+
+#In this case, RAG-based or qa_chain should be invoked
+full_chain.invoke({"question":"Why science is helpful?"})
+
+#In this case, summary_chain should be invoked
+full_chain.invoke({'question':"""Summarize this - 
+Medicine, a multifaceted discipline rooted in science and compassion, is humanity's ally in the eternal battle against disease and suffering. It encompasses a vast array of specialties, from preventive care and diagnostics to treatment and rehabilitation. Guided by rigorous research and ethical principles, medicine continuously evolves to meet the dynamic healthcare needs of individuals and communities worldwide. It is a testament to human ingenuity and collaboration, where healthcare professionals, researchers, and technological innovations converge to extend and improve lives. Beyond its scientific facets, medicine embodies empathy and understanding, as practitioners strive not only to heal bodies but also to support holistic well-being. In the face of challenges old and new, medicine remains a beacon of hope, resilience, and progress, offering solace and solutions to those in need."""})
+
+Case -4: Integrate OpenAI functions with LLM
+
+Some chat models, such as OpenAI’s, feature a function-calling API that allows you to define functions and their arguments. The model then returns a JSON object containing a function to invoke and the corresponding inputs. Function-calling is highly beneficial for constructing tool-using chains and agents, as well as obtaining structured outputs from models in a more general sense.
+
+    bind(), bind_tools() and bind_functions() allow to attach OpenAI functions to a compatible OpenAI model
